@@ -34,7 +34,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
 
 class CustomDatasetFromImages(Dataset):
-    def __init__(self, csv_path):
+    def __init__(self, csv_path, transform=None):
         """
         Args:
             csv_path (string): path to csv file
@@ -53,6 +53,8 @@ class CustomDatasetFromImages(Dataset):
         self.label_arr = np.asarray(self.data_info.iloc[:, 2])
         # Calculate len
         self.data_len = len(self.data_info.index)
+        #resize
+        self.transform = transform
 
     def __getitem__(self, index):
         # Get image name from the pandas df
@@ -64,16 +66,11 @@ class CustomDatasetFromImages(Dataset):
         # Open image
         img_as_img_second = Image.open(second_image_name)
 
-        # Check if there is an operation TBD later
-        '''
-        some_operation = self.operation_arr[index]
         # If there is an operation
-        if some_operation:
-            # Do some operation on image
-            # ...
-            # ...
-            pass
-        '''
+        if self.transform:
+            img_as_img = self.transform(img_as_img)
+            img_as_img_second = self.transform(img_as_img_second)
+
         # Transform image to tensor
         img_as_tensor = self.to_tensor(img_as_img)
         img_as_tensor_second = self.to_tensor(img_as_img_second)
@@ -81,35 +78,40 @@ class CustomDatasetFromImages(Dataset):
         # Get label(class) of the image based on the cropped pandas column
         image_pair_label = self.label_arr[index]
 
-        sample = {"image1":img_as_tensor, "image2":img_as_tensor_second, "label": image_pair_label}
+        sample = (img_as_tensor, img_as_tensor_second, image_pair_label)
 
         return sample
 
     def __len__(self):
         return self.data_len
+    
 
-def main():
-    ffhq_dataset = CustomDatasetFromImages('/datac/nkanama/RetinaFace/save_folder_FFHQ/text_files/masterFFHQ.csv')
-    #fig = plt.figure()
-    pdb.set_trace()
+
+
+def main(argument):
+    transformations = transforms.Compose([transforms.Resize((256,256))])
+    ffhq_dataset = CustomDatasetFromImages(argument, transformations)
 
     for i in range(len(ffhq_dataset)):
         sample = ffhq_dataset[i]
 
-        print(i, sample['image1'], sample["image2"], sample["label"])
+        print(i, sample[0].shape, sample[1].shape, sample[2])
 
         '''
         ax = plt.subplot(1, 4, i + 1)
         plt.tight_layout()
         ax.set_title('Sample #{}'.format(i))
         ax.axis('off')
-
-        if x == 3:
-            plt.savefig(i)
-            break
         '''
+        if i == 10:
+            #plt.savefig(i)
+            break
 
-
+def getLoader(argument, transform):
+    ffhq_dataset = CustomDatasetFromImages(argument, transform)
+    return ffhq_dataset
+        
 
 if __name__ == '__main__':
-    main()
+    arg = '/datac/nkanama/RetinaFace/save_folder_FFHQ/text_files/masterFFHQ.csv' 
+    main(arg)
