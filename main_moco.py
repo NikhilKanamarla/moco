@@ -298,25 +298,25 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
     end = time.time()
     
-    for i, (images, _) in enumerate(train_loader):
+    for i, (image1, image2, label) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
         pdb.set_trace()
 
         if args.gpu is not None:
-            images[0] = images[0].cuda(args.gpu, non_blocking=True)
-            images[1] = images[1].cuda(args.gpu, non_blocking=True)
+            image1 = image1.cuda(args.gpu, non_blocking=True)
+            image2 = image2.cuda(args.gpu, non_blocking=True)
 
         # compute output
-        output, target = model(im_q=images[0], im_k=images[1])
+        output, target = model(im_q=image1, im_k=image2)
         loss = criterion(output, target)
 
         # acc1/acc5 are (K+1)-way contrast classifier accuracy
         # measure accuracy and record loss
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        losses.update(loss.item(), images[0].size(0))
-        top1.update(acc1[0], images[0].size(0))
-        top5.update(acc5[0], images[0].size(0))
+        losses.update(loss.item(), images1.size(0))
+        top1.update(acc1[0], images1.size(0))
+        top5.update(acc5[0], images1.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()

@@ -78,34 +78,24 @@ class CustomDatasetFromImages(Dataset):
         # Get label(class) of the image based on the cropped pandas column
         image_pair_label = self.label_arr[index]
 
-        sample = {"image1":img_as_tensor, "image2":img_as_tensor_second, "label": image_pair_label}
+        sample = (img_as_tensor, img_as_tensor_second, image_pair_label)
 
         return sample
 
     def __len__(self):
         return self.data_len
     
-    '''
-    def getImage(self, image_name):
-        basewidth = 256
-        img = Image.open(image_name)
-        wpercent = (basewidth/float(img.size[0]))
-        hsize = int((float(img.size[1])*float(wpercent)))
-        img = img.resize((basewidth,hsize), Image.ANTIALIAS)
-        return img
-    '''
 
 
 
 def main(argument):
     transformations = transforms.Compose([transforms.Resize((256,256))])
     ffhq_dataset = CustomDatasetFromImages(argument, transformations)
-    #pdb.set_trace()
 
     for i in range(len(ffhq_dataset)):
         sample = ffhq_dataset[i]
 
-        print(i, sample['image1'].shape, sample["image2"].shape, sample["label"])
+        print(i, sample[0].shape, sample[1].shape, sample[2])
 
         '''
         ax = plt.subplot(1, 4, i + 1)
