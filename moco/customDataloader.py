@@ -49,8 +49,6 @@ class CustomDatasetFromImages(Dataset):
         self.image_arr = np.asarray(self.data_info.iloc[:, 0])
         # Second column contains the second image
         self.image_second_arr = np.asarray(self.data_info.iloc[:, 1])
-        # Third column is the labels
-        self.label_arr = np.asarray(self.data_info.iloc[:, 2])
         # Calculate len
         self.data_len = len(self.data_info.index)
         #resize
@@ -75,10 +73,7 @@ class CustomDatasetFromImages(Dataset):
         img_as_tensor = self.to_tensor(img_as_img)
         img_as_tensor_second = self.to_tensor(img_as_img_second)
 
-        # Get label(class) of the image based on the cropped pandas column
-        image_pair_label = self.label_arr[index]
-
-        sample = (img_as_tensor, img_as_tensor_second, image_pair_label)
+        sample = (img_as_tensor, img_as_tensor_second)
 
         return sample
 
@@ -95,7 +90,7 @@ def main(argument):
     for i in range(len(ffhq_dataset)):
         sample = ffhq_dataset[i]
 
-        print(i, sample[0].shape, sample[1].shape, sample[2])
+        print(i, sample[0].shape, sample[1].shape)
 
         '''
         ax = plt.subplot(1, 4, i + 1)

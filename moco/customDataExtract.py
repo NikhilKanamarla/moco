@@ -14,12 +14,6 @@ import pandas as pd
 import csv
 import pdb
 
-def get_digits(str1):
-    c = ""
-    for i in str1:
-        if i.isdigit():
-            c += i
-    return c
 
 def main():
     path = '/datac/nkanama/RetinaFace/save_folder_FFHQ/crops'
@@ -33,17 +27,14 @@ def main():
 
     with open('/datac/nkanama/RetinaFace/save_folder_FFHQ/text_files/masterFFHQ.csv', 'w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(["image1", "image2", "label"])
+        #only store postive samples
+        writer.writerow(["image1", "image2"])
         #pdb.set_trace()
         for image1 in listOfImagePaths:
             if(image1.find("leftEye") != -1):
-                image_num = get_digits(image1)
-                for image2 in listOfImagePaths:
-                    if(image2.find("rightEye") != -1):
-                        if(image_num == get_digits(image2)):
-                            writer.writerow([image1,image2,"postive"])
-                        else:
-                            writer.writerow([image1,image2,"negative"])
+                image2 = image1.replace("leftEye","rightEye")
+                writer.writerow([image1,image2])
+                
 
 
 
