@@ -102,7 +102,7 @@ parser.add_argument('--cos', action='store_true',
 
 def main():
     args = parser.parse_args()
-
+    
     if args.seed is not None:
         random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -132,13 +132,14 @@ def main():
         mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
     else:
         # Simply call main_worker function
+        ngpus_per_node = 1
         main_worker(args.gpu, ngpus_per_node, args)
-
 
 def main_worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
 
     # suppress printing if not master
+
     if args.multiprocessing_distributed and args.gpu != 0:
         def print_pass(*args):
             pass
@@ -146,7 +147,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
     if args.gpu is not None:
         print("Use GPU: {} for training".format(args.gpu))
-
+    
+    
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
             args.rank = int(os.environ["RANK"])
@@ -184,6 +186,15 @@ def main_worker(gpu, ngpus_per_node, args):
     elif args.gpu is not None:
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
+        args.rank = 0
+        args.world_size = 1
+        args.dist_url = 'tcp://localhost:10001'
+        
+        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+                                world_size=args.world_size, rank=args.rank)
+        args.batch_size = int(args.batch_size / ngpus_per_node)
+        args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         # comment out the following line for debugging
         #raise NotImplementedError("Only DistributedDataParallel is supported.")
     else:
@@ -270,6 +281,7 @@ def main_worker(gpu, ngpus_per_node, args):
         adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
+        
         train(train_loader, model, criterion, optimizer, epoch, args)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
@@ -298,11 +310,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
     end = time.time()
     
-    for i, (image1, image2, label) in enumerate(train_loader):
+    for i, (image1, image2) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
-        pdb.set_trace()
-
+        
         if args.gpu is not None:
             image1 = image1.cuda(args.gpu, non_blocking=True)
             image2 = image2.cuda(args.gpu, non_blocking=True)
@@ -313,10 +324,11 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         # acc1/acc5 are (K+1)-way contrast classifier accuracy
         # measure accuracy and record loss
+        #pdb.set_trace()
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        losses.update(loss.item(), images1.size(0))
-        top1.update(acc1[0], images1.size(0))
-        top5.update(acc5[0], images1.size(0))
+        losses.update(loss.item(), image1.size(0))
+        top1.update(acc1[0], image1.size(0))
+        top5.update(acc5[0], image1.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -395,14 +407,15 @@ def accuracy(output, target, topk=(1,)):
     with torch.no_grad():
         maxk = max(topk)
         batch_size = target.size(0)
-
+        
+        #output = output.contiguous().view(3,output.shape[0],output.shape[1])
         _, pred = output.topk(maxk, 1, True, True)
         pred = pred.t()
         correct = pred.eq(target.view(1, -1).expand_as(pred))
 
         res = []
         for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+            correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
