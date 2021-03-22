@@ -32,8 +32,10 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--data', metavar='DIR',
-                    help='path to dataset')
+parser.add_argument('--dataTrain', metavar='DIR',
+                    help='path to train dataset')
+parser.add_argument('--dataVal', metavar='DIR',
+                    help='path to validation dataset')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet50',
                     choices=model_names,
                     help='model architecture: ' +
@@ -231,7 +233,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # Data loading code
     #traindir = os.path.join(args.data, 'train')
-    traindir  = args.data
+    traindir  = args.dataTrain
+    valDir = args.dataVal
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
     if args.aug_plus:
@@ -265,6 +268,7 @@ def main_worker(gpu, ngpus_per_node, args):
     '''
     transformations = transforms.Compose([transforms.Resize((256,256))])
     train_dataset = dataLoader(traindir, transformations)
+    val_dataset = dataLoader(valDir, transformations)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -274,15 +278,18 @@ def main_worker(gpu, ngpus_per_node, args):
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+        num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
 
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         adjust_learning_rate(optimizer, epoch, args)
 
-        # train for one epoch
-        
+        # train for x epochs
         train(train_loader, model, criterion, optimizer, epoch, args)
+        validation(val_loader, model, criterion, optimizer, epoch, args)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
@@ -292,6 +299,53 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
             }, is_best=False, filename='checkpoint_{:04d}.pth.tar'.format(epoch))
+
+'''
+function should perform validation test and change hyperparameters after each epoch
+set torch.no_grad() and torch.eval()
+'''
+def validation(val_loader, model, criterion, optimizer, epoch, args):
+    batch_time = AverageMeter('Time', ':6.3f')
+    data_time = AverageMeter('Data', ':6.3f')
+    losses = AverageMeter('Loss', ':.4e')
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    top5 = AverageMeter('Acc@5', ':6.2f')
+    progress = ProgressMeter(
+        len(val_loader),
+        [batch_time, data_time, losses, top1, top5],
+        prefix="Epoch: [{}]".format(epoch))
+    end = time.time()
+
+    #configure model
+    model.eval()
+    with torch.no_grad():
+        #pass data into model
+        for i, (image1, image2) in enumerate(eval_loader):
+            # measure data loading time
+            data_time.update(time.time() - end)
+            
+            if args.gpu is not None:
+                image1 = image1.cuda(args.gpu, non_blocking=True)
+                image2 = image2.cuda(args.gpu, non_blocking=True)
+
+            # compute output
+            output, target = model(im_q=image1, im_k=image2)
+            loss = criterion(output, target)
+
+            # acc1/acc5 are (K+1)-way contrast classifier accuracy
+            # measure accuracy and record loss
+            #pdb.set_trace()
+            acc1, acc5 = accuracy(output, target, topk=(1, 5))
+            losses.update(loss.item(), image1.size(0))
+            top1.update(acc1[0], image1.size(0))
+            top5.update(acc5[0], image1.size(0))
+
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+            if i % args.print_freq == 0:
+                progress.display("evaluation ," i)
+
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
