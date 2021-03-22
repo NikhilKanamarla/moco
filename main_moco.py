@@ -320,7 +320,7 @@ def validation(val_loader, model, criterion, optimizer, epoch, args):
     model.eval()
     with torch.no_grad():
         #pass data into model
-        for i, (image1, image2) in enumerate(eval_loader):
+        for i, (image1, image2) in enumerate(val_loader):
             # measure data loading time
             data_time.update(time.time() - end)
             
@@ -344,7 +344,8 @@ def validation(val_loader, model, criterion, optimizer, epoch, args):
             batch_time.update(time.time() - end)
             end = time.time()
             if i % args.print_freq == 0:
-                progress.display("evaluation ," i)
+                print("validation current epoch results")
+                progress.display(i)
 
 
 
@@ -394,6 +395,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         end = time.time()
 
         if i % args.print_freq == 0:
+            print("train current epoch results")
             progress.display(i)
 
 

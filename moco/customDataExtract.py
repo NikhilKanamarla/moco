@@ -13,22 +13,23 @@ from torch.utils.data.dataset import Dataset
 import pandas as pd
 import csv
 import pdb
-
+from pathlib import Path
 
 def main():
     path = '/datac/nkanama/RetinaFace/save_folder_FFHQ/crops'
     listOfTrainImagePaths = []
     listOfValImagePaths = []
     # iterate through the names of contents of the folder
-    contentsOfFolder = os.listdir(path)
+    contentsOfFolder = sorted(Path(path).iterdir(), key=os.path.getmtime)
 
-    #create train set 35,000 images
-    for image_path in range(0,len(contentsOfFolder)/2):
+    #create train set 35,000 images (4 crops per image)
+    #pdb.set_trace()
+    for image_path in range(0,int(len(contentsOfFolder)/2)):
         # create the full input path and read the file
         input_path = os.path.join(path, contentsOfFolder[image_path])
         listOfTrainImagePaths.append(input_path)
-    #create validation set 10,000 images
-    for image_path in range(len(contentsOfFolder)/2, 45000):
+    #create validation set 10,000 images (4 crops per image)
+    for image_path in range(int(len(contentsOfFolder)/2), int(len(contentsOfFolder)/2) + 40000):
         # create the full input path and read the file
         input_path = os.path.join(path, contentsOfFolder[image_path])
         listOfValImagePaths.append(input_path)
