@@ -28,7 +28,8 @@ import pdb
 import numpy as np
 from PIL import Image
 from skimage import io, transform
-
+#import loader
+#import builder
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
@@ -65,15 +66,12 @@ class CustomDatasetFromImages(Dataset):
         img_as_img_second = Image.open(second_image_name)
 
         # If there is an operation
+        #pdb.set_trace()
         if self.transform:
             img_as_img = self.transform(img_as_img)
             img_as_img_second = self.transform(img_as_img_second)
 
-        # Transform image to tensor
-        img_as_tensor = self.to_tensor(img_as_img)
-        img_as_tensor_second = self.to_tensor(img_as_img_second)
-
-        sample = (img_as_tensor, img_as_tensor_second)
+        sample = (img_as_img, img_as_img_second)
 
         return sample
 
@@ -84,7 +82,20 @@ class CustomDatasetFromImages(Dataset):
 
 
 def main(argument):
-    transformations = transforms.Compose([transforms.Resize((256,256))])
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+    augmentation = [
+            transforms.Resize((256,256)),
+            transforms.RandomApply([
+                transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
+            ], p=0.8),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.RandomApply([loader.GaussianBlur([.1, 2.])], p=0.5),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize
+        ]
+    transformations = transforms.Compose(augmentation)
     ffhq_dataset = CustomDatasetFromImages(argument, transformations)
 
     for i in range(len(ffhq_dataset)):
@@ -92,12 +103,6 @@ def main(argument):
 
         print(i, sample[0].shape, sample[1].shape)
 
-        '''
-        ax = plt.subplot(1, 4, i + 1)
-        plt.tight_layout()
-        ax.set_title('Sample #{}'.format(i))
-        ax.axis('off')
-        '''
         if i == 10:
             #plt.savefig(i)
             break
@@ -108,5 +113,5 @@ def getLoader(argument, transform):
         
 
 if __name__ == '__main__':
-    arg = '/datac/nkanama/RetinaFace/save_folder_FFHQ/text_files/masterFFHQ.csv' 
+    arg = '/datac/nkanama/RetinaFace/save_folder_FFHQ/text_files/trainFFHQ.csv' 
     main(arg)

@@ -240,7 +240,7 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.aug_plus:
         # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
         augmentation = [
-            transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+            transforms.Resize((256,256)),
             transforms.RandomApply([
                 transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
             ], p=0.8),
@@ -253,7 +253,7 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         # MoCo v1's aug: the same as InstDisc https://arxiv.org/abs/1805.01978
         augmentation = [
-            transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+            transforms.Resize((256,256)),
             transforms.RandomGrayscale(p=0.2),
             transforms.ColorJitter(0.4, 0.4, 0.4, 0.4),
             transforms.RandomHorizontalFlip(),
@@ -266,9 +266,10 @@ def main_worker(gpu, ngpus_per_node, args):
         traindir,
         moco.loader.TwoCropsTransform(transforms.Compose(augmentation)))
     '''
-    transformations = transforms.Compose([transforms.Resize((256,256))])
-    train_dataset = dataLoader(traindir, transformations)
-    val_dataset = dataLoader(valDir, transformations)
+    traintransformations = transforms.Compose(augmentation)
+    train_dataset = dataLoader(traindir, traintransformations)
+    valtransformations = transforms.Compose([transforms.Resize((256,256)), transforms.ToTensor()])
+    val_dataset = dataLoader(valDir, valtransformations)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -298,7 +299,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
-            }, is_best=False, filename='checkpoint_{:04d}.pth.tar'.format(epoch))
+            }, is_best=False, filename='V3checkpoint_{:04d}.pth.tar'.format(epoch))
 
 '''
 function should perform validation test and change hyperparameters after each epoch
@@ -364,7 +365,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
     model.train()
 
     end = time.time()
-    
+    #pdb.set_trace()
     for i, (image1, image2) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
