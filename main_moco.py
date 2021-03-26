@@ -139,9 +139,8 @@ def main():
 
 def main_worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
-
+    
     # suppress printing if not master
-
     if args.multiprocessing_distributed and args.gpu != 0:
         def print_pass(*args):
             pass
@@ -162,8 +161,9 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
     # create model
     print("=> creating model '{}'".format(args.arch))
+    pdb.set_trace()
     model = moco.builder.MoCo(
-        models.__dict__[args.arch],
+        models.__dict__[args.arch](pretrained=True),
         args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp)
     print(model)
     
@@ -191,7 +191,7 @@ def main_worker(gpu, ngpus_per_node, args):
         args.rank = 0
         args.world_size = 1
         args.dist_url = 'tcp://localhost:10001'
-        
+        #pdb.set_trace()
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
         args.batch_size = int(args.batch_size / ngpus_per_node)
@@ -211,6 +211,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
 
+    #pdb.set_trace()
     # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
@@ -266,7 +267,8 @@ def main_worker(gpu, ngpus_per_node, args):
         traindir,
         moco.loader.TwoCropsTransform(transforms.Compose(augmentation)))
     '''
-    traintransformations = transforms.Compose(augmentation)
+    #traintransformations = transforms.Compose(augmentation)
+    traintransformations = transforms.Compose([transforms.Resize((256,256)), transforms.ToTensor()])
     train_dataset = dataLoader(traindir, traintransformations)
     valtransformations = transforms.Compose([transforms.Resize((256,256)), transforms.ToTensor()])
     val_dataset = dataLoader(valDir, valtransformations)
