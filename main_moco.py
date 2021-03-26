@@ -163,7 +163,7 @@ def main_worker(gpu, ngpus_per_node, args):
     print("=> creating model '{}'".format(args.arch))
     pdb.set_trace()
     model = moco.builder.MoCo(
-        models.__dict__[args.arch](pretrained=True),
+        models.__dict__[args.arch],
         args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp)
     print(model)
     
