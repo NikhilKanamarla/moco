@@ -30,6 +30,7 @@ import pdb
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
+    
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--dataTrain', metavar='DIR',
@@ -100,9 +101,13 @@ parser.add_argument('--aug-plus', action='store_true',
                     help='use moco v2 data augmentation')
 parser.add_argument('--cos', action='store_true',
                     help='use cosine lr schedule')
+parser.add_argument('--pretrained', action='store_true', default=False,
+                    help='use pretrained backbone on imagenet')
+
 
 
 def main():
+    #pdb.set_trace()
     args = parser.parse_args()
     
     if args.seed is not None:
@@ -161,10 +166,10 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
     # create model
     print("=> creating model '{}'".format(args.arch))
-    pdb.set_trace()
+    #pdb.set_trace()
     model = moco.builder.MoCo(
         models.__dict__[args.arch],
-        args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp)
+        args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp, args)
     print(model)
     
     if args.distributed:
@@ -301,7 +306,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
-            }, is_best=False, filename='V3checkpoint_{:04d}.pth.tar'.format(epoch))
+            }, is_best=False, filename='V4checkpoint_{:04d}.pth.tar'.format(epoch))
 
 '''
 function should perform validation test and change hyperparameters after each epoch
