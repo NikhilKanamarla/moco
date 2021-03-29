@@ -26,6 +26,9 @@ import moco.loader
 import moco.builder
 from moco.customDataloader import getLoader as dataLoader
 import pdb
+from torch.utils.tensorboard import SummaryWriter
+import tensorboard
+import torchvision
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -144,6 +147,8 @@ def main():
 
 def main_worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
+
+    writer = SummaryWriter('runs/MOCO_run_core_4')
     
     # suppress printing if not master
     if args.multiprocessing_distributed and args.gpu != 0:
@@ -296,8 +301,8 @@ def main_worker(gpu, ngpus_per_node, args):
         adjust_learning_rate(optimizer, epoch, args)
 
         # train for x epochs
-        train(train_loader, model, criterion, optimizer, epoch, args)
-        validation(val_loader, model, criterion, optimizer, epoch, args)
+        train(train_loader, model, criterion, optimizer, epoch, args, writer)
+        validation(val_loader, model, criterion, optimizer, epoch, args, writer)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
@@ -307,12 +312,13 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
             }, is_best=False, filename='V4checkpoint_{:04d}.pth.tar'.format(epoch))
+    writer.close()
 
 '''
 function should perform validation test and change hyperparameters after each epoch
 set torch.no_grad() and torch.eval()
 '''
-def validation(val_loader, model, criterion, optimizer, epoch, args):
+def validation(val_loader, model, criterion, optimizer, epoch, args, writer):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -336,6 +342,14 @@ def validation(val_loader, model, criterion, optimizer, epoch, args):
                 image1 = image1.cuda(args.gpu, non_blocking=True)
                 image2 = image2.cuda(args.gpu, non_blocking=True)
 
+            #add images to tensorboard
+            '''
+            img_grid_1 = torchvision.utils.make_grid(image1)
+            img_grid_2 = torchvision.utils.make_grid(image2)
+            writer.add_image('val images input part A in epoch' + str(epoch), img_grid_1, i)
+            writer.add_image('val images input part B in epoch' + str(epoch), img_grid_2, i)
+            '''
+
             # compute output
             output, target = model(im_q=image1, im_k=image2)
             loss = criterion(output, target)
@@ -348,6 +362,10 @@ def validation(val_loader, model, criterion, optimizer, epoch, args):
             top1.update(acc1[0], image1.size(0))
             top5.update(acc5[0], image1.size(0))
 
+            #output loss and accuracy top1 to tensorboard
+            writer.add_scalar("val loss", loss.item(), epoch * len(val_loader) + i)
+            writer.add_scalar("val accuracy", acc1[0], epoch * len(val_loader) + i)
+
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
@@ -357,7 +375,7 @@ def validation(val_loader, model, criterion, optimizer, epoch, args):
 
 
 
-def train(train_loader, model, criterion, optimizer, epoch, args):
+def train(train_loader, model, criterion, optimizer, epoch, args, writer):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -370,6 +388,13 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
     # switch to train mode
     model.train()
+    
+    '''
+    pdb.set_trace()
+    data2 = next(iter(train_loader))
+    data2 = (data2[0], data2[1])
+    writer.add_graph(model, data2,True)
+    ''' 
 
     end = time.time()
     #pdb.set_trace()
@@ -380,6 +405,14 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         if args.gpu is not None:
             image1 = image1.cuda(args.gpu, non_blocking=True)
             image2 = image2.cuda(args.gpu, non_blocking=True)
+
+        #add images to tensorboard
+        '''
+        img_grid_1 = torchvision.utils.make_grid(image1)
+        img_grid_2 = torchvision.utils.make_grid(image2)
+        writer.add_image('train images input part A in epoch' + str(epoch), img_grid_1, i)
+        writer.add_image('train images input part B in epoch' + str(epoch), img_grid_2, i)
+        '''
 
         # compute output
         output, target = model(im_q=image1, im_k=image2)
@@ -392,6 +425,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         losses.update(loss.item(), image1.size(0))
         top1.update(acc1[0], image1.size(0))
         top5.update(acc5[0], image1.size(0))
+
+        #output loss and accuracy top1 to tensorboard
+        writer.add_scalar("training loss", loss.item(), epoch * len(train_loader) + i)
+        writer.add_scalar("train accuracy", acc1[0], epoch * len(train_loader) + i)
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -472,7 +509,6 @@ def accuracy(output, target, topk=(1,)):
         maxk = max(topk)
         batch_size = target.size(0)
         
-        #output = output.contiguous().view(3,output.shape[0],output.shape[1])
         _, pred = output.topk(maxk, 1, True, True)
         pred = pred.t()
         correct = pred.eq(target.view(1, -1).expand_as(pred))
