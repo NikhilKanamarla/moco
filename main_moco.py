@@ -26,8 +26,7 @@ import moco.loader
 import moco.builder
 from moco.customDataloader import getLoader as dataLoader
 import pdb
-from torch.utils.tensorboard import SummaryWriter
-import tensorboard
+from tensorboardX import SummaryWriter
 import torchvision
 
 model_names = sorted(name for name in models.__dict__
@@ -106,6 +105,8 @@ parser.add_argument('--cos', action='store_true',
                     help='use cosine lr schedule')
 parser.add_argument('--pretrained', action='store_true', default=False,
                     help='use pretrained backbone on imagenet')
+parser.add_argument('--name', type=str, required=True, default=False,
+                    help='name of model and tensorboard log')
 
 
 
@@ -148,7 +149,7 @@ def main():
 def main_worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
 
-    writer = SummaryWriter('runs/MOCO_run_core_4')
+    writer = SummaryWriter('runs/' + args.name)
     
     # suppress printing if not master
     if args.multiprocessing_distributed and args.gpu != 0:
@@ -311,7 +312,8 @@ def main_worker(gpu, ngpus_per_node, args):
                 'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
-            }, is_best=False, filename='V4checkpoint_{:04d}.pth.tar'.format(epoch))
+            }, is_best=False, filename=str(args.name+'checkpoint_{:04d}.pth.tar'.format(epoch)))
+    writer.export_scalars_to_json("./" + args.name + "_scalars.json")
     writer.close()
 
 '''
@@ -344,12 +346,12 @@ def validation(val_loader, model, criterion, optimizer, epoch, args, writer):
 
             #add images to tensorboard
             '''
-            img_grid_1 = torchvision.utils.make_grid(image1)
-            img_grid_2 = torchvision.utils.make_grid(image2)
+            img_grid_1 = torchvision.utils.make_grid(image1, normalize=True, scale_each=True)
+            img_grid_2 = torchvision.utils.make_grid(image2, normalize=True, scale_each=True)
             writer.add_image('val images input part A in epoch' + str(epoch), img_grid_1, i)
             writer.add_image('val images input part B in epoch' + str(epoch), img_grid_2, i)
             '''
-
+            
             # compute output
             output, target = model(im_q=image1, im_k=image2)
             loss = criterion(output, target)
@@ -365,6 +367,8 @@ def validation(val_loader, model, criterion, optimizer, epoch, args, writer):
             #output loss and accuracy top1 to tensorboard
             writer.add_scalar("val loss", loss.item(), epoch * len(val_loader) + i)
             writer.add_scalar("val accuracy", acc1[0], epoch * len(val_loader) + i)
+            output_text = " epoch " + str(epoch) + " batch " + str(i) + " accuracy " + str(acc1[0]) + " loss " + str(loss.item())
+            writer.add_text("validation stats", output_text, i)
 
             # measure elapsed time
             batch_time.update(time.time() - end)
@@ -388,13 +392,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer):
 
     # switch to train mode
     model.train()
+
     
-    '''
-    pdb.set_trace()
-    data2 = next(iter(train_loader))
-    data2 = (data2[0], data2[1])
-    writer.add_graph(model, data2,True)
-    ''' 
 
     end = time.time()
     #pdb.set_trace()
@@ -408,8 +407,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer):
 
         #add images to tensorboard
         '''
-        img_grid_1 = torchvision.utils.make_grid(image1)
-        img_grid_2 = torchvision.utils.make_grid(image2)
+        img_grid_1 = torchvision.utils.make_grid(image1, normalize=True, scale_each=True)
+        img_grid_2 = torchvision.utils.make_grid(image2, normalize=True, scale_each=True)
         writer.add_image('train images input part A in epoch' + str(epoch), img_grid_1, i)
         writer.add_image('train images input part B in epoch' + str(epoch), img_grid_2, i)
         '''
@@ -429,6 +428,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer):
         #output loss and accuracy top1 to tensorboard
         writer.add_scalar("training loss", loss.item(), epoch * len(train_loader) + i)
         writer.add_scalar("train accuracy", acc1[0], epoch * len(train_loader) + i)
+        output_text = " epoch " + str(epoch) + " batch " + str(i) + " accuracy " + str(acc1[0]) + " loss " + str(loss.item())
+        writer.add_text("training stats", output_text, i)
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
