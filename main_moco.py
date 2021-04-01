@@ -72,12 +72,12 @@ parser.add_argument('--world-size', default=-1, type=int,
                     help='number of nodes for distributed training')
 parser.add_argument('--rank', default=-1, type=int,
                     help='node rank for distributed training')
-parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
+parser.add_argument('--dist-url', default= 'tcp://224.66.41.62:23456', type=str,
                     help='url used to set up distributed training')
 parser.add_argument('--dist-backend', default='nccl', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
-                    help='seed for initializing training. ')
+                    help='seed for initializing training')
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
@@ -183,7 +183,7 @@ def main_worker(gpu, ngpus_per_node, args):
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
         if args.gpu is not None:
-            torch.cuda.set_device(args.gpu)
+            torch.cuda.set_device(device='gpu', gpu_id=args.gpu)
             model.cuda(args.gpu)
             # When using a single GPU per process and per
             # DistributedDataParallel, we need to divide the batch size
@@ -197,14 +197,12 @@ def main_worker(gpu, ngpus_per_node, args):
             # available GPUs if device_ids are not set
             model = torch.nn.parallel.DistributedDataParallel(model)
     elif args.gpu is not None:
+        pdb.set_trace()
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
         args.rank = 0
         args.world_size = 1
-        args.dist_url = 'tcp://localhost:10001'
-        #pdb.set_trace()
-        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
-                                world_size=args.world_size, rank=args.rank)
+        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url, world_size=args.world_size, rank=args.rank)
         args.batch_size = int(args.batch_size / ngpus_per_node)
         args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
@@ -273,11 +271,7 @@ def main_worker(gpu, ngpus_per_node, args):
             normalize
         ]
 
-    '''
-    train_dataset = datasets.ImageFolder(
-        traindir,
-        moco.loader.TwoCropsTransform(transforms.Compose(augmentation)))
-    '''
+
     #traintransformations = transforms.Compose(augmentation)
     traintransformations = transforms.Compose([transforms.Resize((256,256)), transforms.ToTensor()])
     train_dataset = dataLoader(traindir, traintransformations)
@@ -288,15 +282,16 @@ def main_worker(gpu, ngpus_per_node, args):
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     else:
         train_sampler = None
-
+    
+    #pdb.set_trace()
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+        val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
 
-    for epoch in range(args.start_epoch, args.epochs):
+    for epoch in range(args.start_epoch, args.epochs+1):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         adjust_learning_rate(optimizer, epoch, args)
@@ -351,7 +346,7 @@ def validation(val_loader, model, criterion, optimizer, epoch, args, writer):
             writer.add_image('val images input part A in epoch' + str(epoch), img_grid_1, i)
             writer.add_image('val images input part B in epoch' + str(epoch), img_grid_2, i)
             '''
-            
+
             # compute output
             output, target = model(im_q=image1, im_k=image2)
             loss = criterion(output, target)
