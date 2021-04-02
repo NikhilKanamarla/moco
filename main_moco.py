@@ -68,11 +68,11 @@ parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
-parser.add_argument('--world-size', default=-1, type=int,
+parser.add_argument('--world-size', default=1, type=int,
                     help='number of nodes for distributed training')
-parser.add_argument('--rank', default=-1, type=int,
+parser.add_argument('--rank', default=0, type=int,
                     help='node rank for distributed training')
-parser.add_argument('--dist-url', default= 'tcp://224.66.41.62:23456', type=str,
+parser.add_argument('--dist-url', default= 'tcp://localhost:10002', type=str,
                     help='url used to set up distributed training')
 parser.add_argument('--dist-backend', default='nccl', type=str,
                     help='distributed backend')
@@ -200,8 +200,6 @@ def main_worker(gpu, ngpus_per_node, args):
         pdb.set_trace()
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
-        args.rank = 0
-        args.world_size = 1
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url, world_size=args.world_size, rank=args.rank)
         args.batch_size = int(args.batch_size / ngpus_per_node)
         args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
@@ -387,11 +385,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer):
 
     # switch to train mode
     model.train()
-
-    
-
     end = time.time()
-    #pdb.set_trace()
+    pdb.set_trace()
     for i, (image1, image2) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
