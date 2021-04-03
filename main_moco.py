@@ -132,9 +132,10 @@ def main():
         args.world_size = int(os.environ["WORLD_SIZE"])
 
     #args.distributed = args.world_size > 1 or args.multiprocessing_distributed
-    args.distributed = False
+    args.distributed = True
+    
     pdb.set_trace()
-    #ngpus_per_node = torch.cuda.device_count()
+    ngpus_per_node = 1
     if args.multiprocessing_distributed:
         # Since we have ngpus_per_node processes per node, the total world_size
         # needs to be adjusted accordingly
@@ -143,8 +144,6 @@ def main():
         # main_worker process function
         mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
     else:
-        # Simply call main_worker function
-        ngpus_per_node = 1
         main_worker(args.gpu, ngpus_per_node, args)
 
 def main_worker(gpu, ngpus_per_node, args):
