@@ -131,9 +131,10 @@ def main():
     if args.dist_url == "env://" and args.world_size == -1:
         args.world_size = int(os.environ["WORLD_SIZE"])
 
-    args.distributed = args.world_size > 1 or args.multiprocessing_distributed
-    
-    ngpus_per_node = torch.cuda.device_count()
+    #args.distributed = args.world_size > 1 or args.multiprocessing_distributed
+    args.distributed = False
+    pdb.set_trace()
+    #ngpus_per_node = torch.cuda.device_count()
     if args.multiprocessing_distributed:
         # Since we have ngpus_per_node processes per node, the total world_size
         # needs to be adjusted accordingly
@@ -147,7 +148,6 @@ def main():
         main_worker(args.gpu, ngpus_per_node, args)
 
 def main_worker(gpu, ngpus_per_node, args):
-    args.gpu = gpu
 
     writer = SummaryWriter('runs/' + args.name)
     
@@ -160,7 +160,6 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.gpu is not None:
         print("Use GPU: {} for training".format(args.gpu))
     
-    
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
             args.rank = int(os.environ["RANK"])
@@ -170,6 +169,7 @@ def main_worker(gpu, ngpus_per_node, args):
             args.rank = args.rank * ngpus_per_node + gpu
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
+
     # create model
     print("=> creating model '{}'".format(args.arch))
     #pdb.set_trace()
@@ -183,7 +183,7 @@ def main_worker(gpu, ngpus_per_node, args):
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
         if args.gpu is not None:
-            torch.cuda.set_device(device='gpu', gpu_id=args.gpu)
+            torch.cuda.set_device(args.gpu)
             model.cuda(args.gpu)
             # When using a single GPU per process and per
             # DistributedDataParallel, we need to divide the batch size
@@ -197,11 +197,11 @@ def main_worker(gpu, ngpus_per_node, args):
             # available GPUs if device_ids are not set
             model = torch.nn.parallel.DistributedDataParallel(model)
     elif args.gpu is not None:
-        #pdb.set_trace()
+        pdb.set_trace()
+        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url, world_size=args.world_size, rank=args.rank)
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
         print(torch.cuda.memory_allocated())
-        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url, world_size=args.world_size, rank=args.rank)
         args.batch_size = int(args.batch_size / ngpus_per_node)
         args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
@@ -387,7 +387,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer):
     # switch to train mode
     model.train()
     end = time.time()
-    pdb.set_trace()
+    #pdb.set_trace()
     for i, (image1, image2) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
