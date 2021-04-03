@@ -197,9 +197,10 @@ def main_worker(gpu, ngpus_per_node, args):
             # available GPUs if device_ids are not set
             model = torch.nn.parallel.DistributedDataParallel(model)
     elif args.gpu is not None:
-        pdb.set_trace()
+        #pdb.set_trace()
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
+        print(torch.cuda.memory_allocated())
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url, world_size=args.world_size, rank=args.rank)
         args.batch_size = int(args.batch_size / ngpus_per_node)
         args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
