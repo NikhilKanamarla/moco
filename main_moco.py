@@ -157,7 +157,7 @@ def main_worker(gpu, ngpus_per_node, args):
         builtins.print = print_pass
 
     if args.gpu is not None:
-        print("Use GPU: {} for training".format(args.gpu))
+        print("Use GPU: {} for training".format(os.environ["CUDA_VISIBLE_DEVICES"]))
     #pdb.set_trace()
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
@@ -166,7 +166,7 @@ def main_worker(gpu, ngpus_per_node, args):
             # For multiprocessing distributed training, rank needs to be the
             # global rank among all the processes
             args.rank = args.rank * ngpus_per_node + gpu
-        os.environ["CUDA_VISIBLE_DEVICES"]= str(gpu)
+        #os.environ["CUDA_VISIBLE_DEVICES"]= str(gpu)
         print(torch.cuda.device_count())
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
@@ -184,7 +184,7 @@ def main_worker(gpu, ngpus_per_node, args):
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
         if args.gpu is not None:
-            pdb.set_trace()
+            #pdb.set_trace()
             torch.cuda.set_device(args.gpu)
             model.cuda(args.gpu)
             # When using a single GPU per process and per
@@ -232,9 +232,9 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.benchmark = True
 
     # Data loading code
-    #traindir = os.path.join(args.data, 'train')
     traindir  = args.dataTrain
     valDir = args.dataVal
+
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
     if args.aug_plus:
@@ -261,18 +261,22 @@ def main_worker(gpu, ngpus_per_node, args):
             normalize
         ]
 
+    if args.aug_plus == False:
+        augmentation = transforms.Compose([transforms.Resize((256,256)), transforms.ToTensor()])
 
-    #traintransformations = transforms.Compose(augmentation)
-    traintransformations = transforms.Compose([transforms.Resize((256,256)), transforms.ToTensor()])
+    traintransformations = augmentation
     train_dataset = dataLoader(traindir, traintransformations)
-    valtransformations = transforms.Compose([transforms.Resize((256,256)), transforms.ToTensor()])
+    valtransformations = augmentation
     val_dataset = dataLoader(valDir, valtransformations)
 
+    '''
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     else:
         train_sampler = None
-    
+    '''
+    train_sampler = None
+
     #pdb.set_trace()
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
@@ -282,8 +286,10 @@ def main_worker(gpu, ngpus_per_node, args):
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
 
     for epoch in range(args.start_epoch, args.epochs+1):
+        '''
         if args.distributed:
             train_sampler.set_epoch(epoch)
+        '''
         adjust_learning_rate(optimizer, epoch, args)
 
         # train for x epochs
@@ -395,6 +401,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer):
         '''
 
         # compute output
+        pdb.set_trace()
         output, target = model(im_q=image1, im_k=image2)
         loss = criterion(output, target)
 
@@ -492,7 +499,9 @@ def accuracy(output, target, topk=(1,)):
         batch_size = target.size(0)
         
         _, pred = output.topk(maxk, 1, True, True)
+        # 5 rows and 128 columns with prediction values ranging from 0 and up
         pred = pred.t()
+        # 5 rows and 128 columns with True or False if predicition matches ground truth (0)
         correct = pred.eq(target.view(1, -1).expand_as(pred))
 
         res = []
