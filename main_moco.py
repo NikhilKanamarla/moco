@@ -132,7 +132,8 @@ def main():
         args.world_size = int(os.environ["WORLD_SIZE"])
 
     #explicit rules
-    args.distributed = args.world_size > 1 or args.multiprocessing_distributed
+    #args.distributed = args.world_size > 1 or args.multiprocessing_distributed
+    args.distributed = True
     ngpus_per_node = 1
 
     if args.multiprocessing_distributed:
@@ -165,6 +166,8 @@ def main_worker(gpu, ngpus_per_node, args):
             # For multiprocessing distributed training, rank needs to be the
             # global rank among all the processes
             args.rank = args.rank * ngpus_per_node + gpu
+        os.environ["CUDA_VISIBLE_DEVICES"]= str(gpu)
+        print(torch.cuda.device_count())
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
 
@@ -181,8 +184,9 @@ def main_worker(gpu, ngpus_per_node, args):
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
         if args.gpu is not None:
-            #torch.cuda.set_device(args.gpu)
-            #model.cuda(args.gpu)
+            pdb.set_trace()
+            torch.cuda.set_device(args.gpu)
+            model.cuda(args.gpu)
             # When using a single GPU per process and per
             # DistributedDataParallel, we need to divide the batch size
             # ourselves based on the total number of GPUs we have
