@@ -341,8 +341,7 @@ def validation(val_loader, model, criterion, optimizer, epoch, args, writer):
 
             # compute output
             output, target, q, k = model(im_q=image1, im_k=image2)
-            if(epoch >= 5):
-                similarityMatrix = visualize(q, k, image1, image2, epoch, args)
+            similarityMatrix = visualize(q, k, image1, image2, epoch, args, writer)
             loss = criterion(output, target)
 
             # acc1/acc5 are (K+1)-way contrast classifier accuracy
@@ -392,7 +391,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer):
 
         # compute output
         output, target, q, k = model(im_q=image1, im_k=image2)
-        #similarityMatrix = visualize(q, k, image1, image2, epoch, args)
+        #similarityMatrix = visualize(q, k, image1, image2, epoch, args, writer)
         loss = criterion(output, target)
 
         # acc1/acc5 are (K+1)-way contrast classifier accuracy
@@ -403,6 +402,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer):
         top5.update(acc5[0], image1.size(0))
 
         #output loss and accuracy top1 to tensorboard
+        #pdb.set_trace()
         writer.add_scalar("training loss", loss.item(), epoch * len(train_loader) + i)
         writer.add_scalar("train accuracy", acc1[0], epoch * len(train_loader) + i)
         output_text = " epoch " + str(epoch) + " batch " + str(i) + " accuracy " + str(acc1[0]) + " loss " + str(loss.item())
@@ -499,7 +499,7 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
-def visualize(a, b, image1, image2, epoch, args):
+def visualize(a, b, image1, image2, epoch, args, writer):
     # Given that cos_sim(u, v) = dot(u, v) / (norm(u) * norm(v))
     #                          = dot(u / norm(u), v / norm(v))
     # We fist normalize the rows, before computing their dot products via transposition:
@@ -519,7 +519,6 @@ def visualize(a, b, image1, image2, epoch, args):
     #print(res_n)
 
     #write cosine similaity [-1,1] to tensorboard
-    '''
     for x in range(len(image1)):
         for z in range(len(image2)):
             images = torch.cat((image1[x], image2[z]), 1)
@@ -527,7 +526,7 @@ def visualize(a, b, image1, image2, epoch, args):
             if(x == z and res_n[x][z] <= 0.5):
                 output_string = str(epoch) + ' postive sample similarity ' + str(res_n[x][z])
                 writer.add_image(output_string, img_grid)
-            elif(x != z and res_n[x][z] >= 0.7):
+            elif(x != z and res_n[x][z] >= 0.5):
                 output_string = str(epoch) + ' negative sample similarity ' + str(res_n[x][z])
                 writer.add_image(output_string, img_grid)
     '''
@@ -547,14 +546,12 @@ def visualize(a, b, image1, image2, epoch, args):
             fig.tight_layout()
             
             output_string = ' '
-            '''
             if(x == z):
                 output_string = str(epoch) + '_postive sample similarity_' + str(res_n[x][z])
             else:
                 output_string = str(epoch) + '_negative sample similarity_' + str(res_n[x][z])
             fig.suptitle(output_string)
             fig.savefig(os.path.join(args.output, output_string + ".png"),format='png')
-            '''
             #handle bad cases
             if(x == z and res_n[x][z] <= 0.5):
                 output_string = str(epoch) + ' postive sample similarity ' + str(res_n[x][z])
@@ -565,7 +562,7 @@ def visualize(a, b, image1, image2, epoch, args):
                 fig.suptitle(output_string)
                 fig.savefig(os.path.join(args.output, "badOutcomes" ,output_string + ".png"),format='png')
             plt.close()
-
+    '''
     return res_n
 
 
