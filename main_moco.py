@@ -341,7 +341,7 @@ def validation(val_loader, model, criterion, optimizer, epoch, args, writer):
 
             # compute output
             output, target, q, k = model(im_q=image1, im_k=image2)
-            if(epoch > 5):
+            if(epoch >= 5):
                 similarityMatrix = visualize(q, k, image1, image2, epoch, args)
             loss = criterion(output, target)
 
