@@ -21,11 +21,14 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
+from scipy import spatial
+import numpy as np
 
 import moco.loader
 import moco.builder
 from moco.customDataloader import getLoader as dataLoader
 import pdb
+import matplotlib.pyplot as plt
 from tensorboardX import SummaryWriter
 import torchvision
 
@@ -107,11 +110,12 @@ parser.add_argument('--pretrained', action='store_true', default=False,
                     help='use pretrained backbone on imagenet')
 parser.add_argument('--name', type=str, required=True, default=False,
                     help='name of model and tensorboard log')
+parser.add_argument('--output', type=str, required=True, default=False,
+                    help='location to output images')
 
 
 
 def main():
-    #pdb.set_trace()
     args = parser.parse_args()
     
     if args.seed is not None:
@@ -148,7 +152,7 @@ def main():
 
 def main_worker(gpu, ngpus_per_node, args):
 
-    writer = SummaryWriter('runs/' + args.name)
+    writer = SummaryWriter('runs/' + args.name, max_queue=10, flush_secs=60)
     
     # suppress printing if not master
     if args.multiprocessing_distributed and args.gpu != 0:
@@ -158,7 +162,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     if args.gpu is not None:
         print("Use GPU: {} for training".format(os.environ["CUDA_VISIBLE_DEVICES"]))
-    #pdb.set_trace()
+
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
             args.rank = int(os.environ["RANK"])
@@ -335,16 +339,10 @@ def validation(val_loader, model, criterion, optimizer, epoch, args, writer):
                 image1 = image1.cuda(args.gpu, non_blocking=True)
                 image2 = image2.cuda(args.gpu, non_blocking=True)
 
-            #add images to tensorboard
-            '''
-            img_grid_1 = torchvision.utils.make_grid(image1, normalize=True, scale_each=True)
-            img_grid_2 = torchvision.utils.make_grid(image2, normalize=True, scale_each=True)
-            writer.add_image('val images input part A in epoch' + str(epoch), img_grid_1, i)
-            writer.add_image('val images input part B in epoch' + str(epoch), img_grid_2, i)
-            '''
-
             # compute output
-            output, target = model(im_q=image1, im_k=image2)
+            output, target, q, k = model(im_q=image1, im_k=image2)
+            if(epoch > 5):
+                similarityMatrix = visualize(q, k, image1, image2, epoch, args)
             loss = criterion(output, target)
 
             # acc1/acc5 are (K+1)-way contrast classifier accuracy
@@ -392,22 +390,13 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer):
             image1 = image1.cuda(args.gpu, non_blocking=True)
             image2 = image2.cuda(args.gpu, non_blocking=True)
 
-        #add images to tensorboard
-        '''
-        img_grid_1 = torchvision.utils.make_grid(image1, normalize=True, scale_each=True)
-        img_grid_2 = torchvision.utils.make_grid(image2, normalize=True, scale_each=True)
-        writer.add_image('train images input part A in epoch' + str(epoch), img_grid_1, i)
-        writer.add_image('train images input part B in epoch' + str(epoch), img_grid_2, i)
-        '''
-
         # compute output
-        pdb.set_trace()
-        output, target = model(im_q=image1, im_k=image2)
+        output, target, q, k = model(im_q=image1, im_k=image2)
+        #similarityMatrix = visualize(q, k, image1, image2, epoch, args)
         loss = criterion(output, target)
 
         # acc1/acc5 are (K+1)-way contrast classifier accuracy
         # measure accuracy and record loss
-        #pdb.set_trace()
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
         losses.update(loss.item(), image1.size(0))
         top1.update(acc1[0], image1.size(0))
@@ -509,6 +498,75 @@ def accuracy(output, target, topk=(1,)):
             correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
+
+def visualize(a, b, image1, image2, epoch, args):
+    # Given that cos_sim(u, v) = dot(u, v) / (norm(u) * norm(v))
+    #                          = dot(u / norm(u), v / norm(v))
+    # We fist normalize the rows, before computing their dot products via transposition:
+    a_norm = a / a.norm(dim=1)[:, None]
+    b_norm = b / b.norm(dim=1)[:, None]
+    res = torch.mm(a_norm, b_norm.transpose(0,1))
+    #print(res)
+   
+    # Let's verify with numpy/scipy if our computations are correct:
+    a_n = a.detach().cpu().numpy()
+    b_n = b.detach().cpu().numpy()
+    res_n = np.zeros((len(a), len(b)))
+    for i in range(len(a)):
+        for j in range(len(b)):
+            # cos_sim(u, v) = 1 - cos_dist(u, v)
+            res_n[i, j] = 1 - spatial.distance.cosine(a_n[i], b_n[j])
+    #print(res_n)
+
+    #write cosine similaity [-1,1] to tensorboard
+    '''
+    for x in range(len(image1)):
+        for z in range(len(image2)):
+            images = torch.cat((image1[x], image2[z]), 1)
+            img_grid = torchvision.utils.make_grid(images, normalize=True, scale_each=True)
+            if(x == z and res_n[x][z] <= 0.5):
+                output_string = str(epoch) + ' postive sample similarity ' + str(res_n[x][z])
+                writer.add_image(output_string, img_grid)
+            elif(x != z and res_n[x][z] >= 0.7):
+                output_string = str(epoch) + ' negative sample similarity ' + str(res_n[x][z])
+                writer.add_image(output_string, img_grid)
+    '''
+    width=len(image1[0])
+    height= len(image2[0])
+    rows = 1
+    cols = 2
+    axes=[]
+    #pdb.set_trace()
+    for x in range(len(image1)):
+        for z in range(len(image2)):
+            fig=plt.figure()
+            fig.add_subplot(rows, cols, 1)
+            plt.imshow(image1[x].cpu().permute(1, 2, 0).numpy())
+            fig.add_subplot(rows, cols, 2)
+            plt.imshow(image2[z].cpu().permute(1, 2, 0).numpy())
+            fig.tight_layout()
+            
+            output_string = ' '
+            '''
+            if(x == z):
+                output_string = str(epoch) + '_postive sample similarity_' + str(res_n[x][z])
+            else:
+                output_string = str(epoch) + '_negative sample similarity_' + str(res_n[x][z])
+            fig.suptitle(output_string)
+            fig.savefig(os.path.join(args.output, output_string + ".png"),format='png')
+            '''
+            #handle bad cases
+            if(x == z and res_n[x][z] <= 0.5):
+                output_string = str(epoch) + ' postive sample similarity ' + str(res_n[x][z])
+                fig.suptitle(output_string)
+                fig.savefig(os.path.join(args.output, "badOutcomes", output_string + ".png"),format='png')
+            elif(x != z and res_n[x][z] >= 0.5):
+                output_string = str(epoch) + ' negative sample similarity ' + str(res_n[x][z])
+                fig.suptitle(output_string)
+                fig.savefig(os.path.join(args.output, "badOutcomes" ,output_string + ".png"),format='png')
+            plt.close()
+
+    return res_n
 
 
 if __name__ == '__main__':
