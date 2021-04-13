@@ -141,15 +141,13 @@ def setup_process(rank, master_addr, master_port, world_size, model, args, backe
     print(f"{rank} init complete")
 
     #setup model
+    #pdb.set_trace()
     torch.cuda.set_device(args.gpu)
     model.cuda(args.gpu)
-    ngpus_per_node = world_size
-    pdb.set_trace()
-    # When using a single GPU per process and per
-    # DistributedDataParallel, we need to divide the batch size
-    # ourselves based on the total number of GPUs we have
-    args.batch_size = int(args.batch_size / ngpus_per_node)
-    args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
+    criterion = nn.CrossEntropyLoss().cuda(args.gpu)
+    optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                momentum=args.momentum,
+                                weight_decay=args.weight_decay)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
     return model
 
@@ -259,13 +257,14 @@ def main_worker(gpu, ngpus_per_node, args):
         model.cuda(gpu)
      '''   
 
+    '''
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
-
+    '''
     #pdb.set_trace()
     # optionally resume from a checkpoint
     if args.resume:
