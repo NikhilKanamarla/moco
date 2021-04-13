@@ -31,6 +31,9 @@ import pdb
 import matplotlib.pyplot as plt
 from tensorboardX import SummaryWriter
 import torchvision
+import torch.multiprocessing as mp
+import torch.distributed as dist
+import os
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -114,6 +117,43 @@ parser.add_argument('--output', type=str, required=True, default=False,
                     help='location to output images')
 
 
+def find_free_port():
+    """ https://stackoverflow.com/questions/1365265/on-localhost-how-do-i-pick-a-free-port-number """
+    import socket
+    from contextlib import closing
+
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(('', 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return str(s.getsockname()[1])
+
+
+def setup_process(rank, master_addr, master_port, world_size, model, args, backend='nccl'):
+    print(f'setting up {rank} {world_size} {backend}')
+    
+    # set up the master's ip address so this child process can coordinate
+    os.environ['MASTER_ADDR'] = str(master_addr)
+    os.environ['MASTER_PORT'] = str(master_port)
+    print(f"{master_addr} {master_port}")
+
+    # Initializes the default distributed process group, and this will also initialize the distributed package.
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
+    print(f"{rank} init complete")
+
+    #setup model
+    torch.cuda.set_device(args.gpu)
+    model.cuda(args.gpu)
+    ngpus_per_node = world_size
+    pdb.set_trace()
+    # When using a single GPU per process and per
+    # DistributedDataParallel, we need to divide the batch size
+    # ourselves based on the total number of GPUs we have
+    args.batch_size = int(args.batch_size / ngpus_per_node)
+    args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+    return model
+
+
 
 def main():
     args = parser.parse_args()
@@ -136,10 +176,11 @@ def main():
         args.world_size = int(os.environ["WORLD_SIZE"])
 
     #explicit rules
-    #args.distributed = args.world_size > 1 or args.multiprocessing_distributed
-    args.distributed = True
-    ngpus_per_node = 1
-
+    args.distributed = args.world_size > 1 or args.multiprocessing_distributed
+    #args.distributed = True
+    ngpus_per_node = torch.cuda.device_count()
+    
+    '''
     if args.multiprocessing_distributed:
         # Since we have ngpus_per_node processes per node, the total world_size
         # needs to be adjusted accordingly
@@ -149,20 +190,23 @@ def main():
         mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
     else:
         main_worker(args.gpu, ngpus_per_node, args)
-
+    '''
+    main_worker(args.gpu, ngpus_per_node, args)
 def main_worker(gpu, ngpus_per_node, args):
 
     writer = SummaryWriter('runs/' + args.name, max_queue=10, flush_secs=60)
-    
+    '''
     # suppress printing if not master
     if args.multiprocessing_distributed and args.gpu != 0:
         def print_pass(*args):
             pass
         builtins.print = print_pass
+    '''
 
     if args.gpu is not None:
         print("Use GPU: {} for training".format(os.environ["CUDA_VISIBLE_DEVICES"]))
-
+    
+    '''
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
             args.rank = int(os.environ["RANK"])
@@ -170,10 +214,10 @@ def main_worker(gpu, ngpus_per_node, args):
             # For multiprocessing distributed training, rank needs to be the
             # global rank among all the processes
             args.rank = args.rank * ngpus_per_node + gpu
-        #os.environ["CUDA_VISIBLE_DEVICES"]= str(gpu)
         print(torch.cuda.device_count())
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
+    '''
 
     # create model
     print("=> creating model '{}'".format(args.arch))
@@ -182,7 +226,15 @@ def main_worker(gpu, ngpus_per_node, args):
         models.__dict__[args.arch],
         args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp, args)
     print(model)
-    
+
+    #setup process
+    world_size = args.world_size
+    master_addr = '127.0.0.2'
+    master_port = find_free_port()
+    model = mp.spawn(setup_process, args=(master_addr,master_port,world_size,model, args, args.dist_backend), nprocs=world_size)
+
+ 
+    '''
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
@@ -205,7 +257,7 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         torch.cuda.set_device(gpu)
         model.cuda(gpu)
-        
+     '''   
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
@@ -273,13 +325,13 @@ def main_worker(gpu, ngpus_per_node, args):
     valtransformations = augmentation
     val_dataset = dataLoader(valDir, valtransformations)
 
-    '''
-    if args.distributed:
+    train_sampler = None
+    if args.distributed and ngpus_per_node > 1:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     else:
         train_sampler = None
-    '''
-    train_sampler = None
+    
+    
 
     #pdb.set_trace()
     train_loader = torch.utils.data.DataLoader(
@@ -290,10 +342,8 @@ def main_worker(gpu, ngpus_per_node, args):
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
 
     for epoch in range(args.start_epoch, args.epochs+1):
-        '''
         if args.distributed:
             train_sampler.set_epoch(epoch)
-        '''
         adjust_learning_rate(optimizer, epoch, args)
 
         # train for x epochs
@@ -309,6 +359,8 @@ def main_worker(gpu, ngpus_per_node, args):
                 'optimizer' : optimizer.state_dict(),
             }, is_best=False, filename=str(args.name+'checkpoint_{:04d}.pth.tar'.format(epoch)))
     writer.export_scalars_to_json("./" + args.name + "_scalars.json")
+    dist.destroy_process_group()
+    print(f"{rank} destroy complete")
     writer.close()
 
 '''
