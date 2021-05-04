@@ -23,10 +23,11 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 from scipy import spatial
 import numpy as np
+from sklearn.metrics import average_precision_score
 
 import moco.loader
 import moco.builder
-from moco.customDataloader import getLoader as dataLoader
+from moco.customTestDataloader import getLoader as dataLoader
 import pdb
 import matplotlib.pyplot as plt
 from tensorboardX import SummaryWriter
@@ -140,7 +141,6 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.gpu is not None:
         print("Use GPU: {} for training".format(os.environ["CUDA_VISIBLE_DEVICES"]))
     
-    
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
             args.rank = int(os.environ["RANK"])
@@ -161,25 +161,10 @@ def main_worker(gpu, ngpus_per_node, args):
     print(model)
     
     if args.distributed:
-        # For multiprocessing distributed, DistributedDataParallel constructor
-        # should always set the single device scope, otherwise,
-        # DistributedDataParallel will use all available devices.
-        if gpu is not None:
-            model.cuda()
-            # When using a single GPU per process and per
-            # DistributedDataParallel, we need to divide the batch size
-            # ourselves based on the total number of GPUs we have
-            args.batch_size = int(args.batch_size / ngpus_per_node)
-            args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
-            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[int(gpu)])
-        else:
-            model.cuda()
-            # DistributedDataParallel will divide and allocate batch_size to all
-            # available GPUs if device_ids are not set
-            model = torch.nn.parallel.DistributedDataParallel(model)
-    else:
-        torch.cuda.set_device(gpu)
-        model.cuda(gpu)
+        model.cuda()
+        # DistributedDataParallel will divide and allocate batch_size to all
+        # available GPUs if device_ids are not set
+        model = torch.nn.parallel.DistributedDataParallel(model)
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(gpu)
@@ -274,11 +259,13 @@ def test(test_loader, model, criterion, optimizer, epoch, args, writer):
         prefix="Epoch: [{}]".format(epoch))
     end = time.time()
     
+    finalOutput = []
+    finalTarget = []
     #configure model
     pdb.set_trace()
     model.eval()
     with torch.no_grad():
-        for i, (image1, image2) in enumerate(test_loader):
+        for i, (image1, image2, labels) in enumerate(test_loader):
             # measure data loading time
             data_time.update(time.time() - end)
             
@@ -288,6 +275,7 @@ def test(test_loader, model, criterion, optimizer, epoch, args, writer):
 
             # compute output
             output, target, q, k = model(im_q=image1, im_k=image2)
+            computeDotProduct(q, k, labels, finalOutput, finalTarget)
             #similarityMatrix = visualize(q, k, image1, image2, epoch, args, writer)
             loss = criterion(output, target)
 
@@ -305,17 +293,19 @@ def test(test_loader, model, criterion, optimizer, epoch, args, writer):
             output_text = " epoch " + str(epoch) + " batch " + str(i) + " accuracy " + str(acc1[0]) + " loss " + str(loss.item())
             writer.add_text("test stats", output_text, i)
 
-            # compute gradient and do SGD step
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
             if i % args.print_freq == 0:
                 print("test current epoch results")
                 progress.display(i)
+    
+    #compute AP
+    pdb.set_trace()
+    finalTarget = (np.array(finalTarget)).flatten()
+    finalOutput = (np.array(finalOutput)).flatten()
+    AP = average_precision_score(y_true=finalTarget, y_score=finalOutput, pos_label=0)
+    print("average precison is", AP)
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
@@ -382,6 +372,16 @@ def accuracy(output, target, topk=(1,)):
             correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
+
+def computeDotProduct(a, b, labels, finalOutput, finalTarget):
+    # We fist normalize the rows, before computing their dot products
+    a_norm = a / a.norm(dim=1)[:, None]
+    b_norm = b / b.norm(dim=1)[:, None]
+    res = torch.einsum('ik,kj->ij', [a, b])
+    # labels: positive key indicators
+    labels = labels.cuda()
+    finalTarget.append(labels.tolist())
+    finalOutput.append(res.tolist())
 
 def visualize(a, b, image1, image2, epoch, args, writer):
     # Given that cos_sim(u, v) = dot(u, v) / (norm(u) * norm(v))
