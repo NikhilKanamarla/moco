@@ -130,19 +130,15 @@ def main():
                       'You may see unexpected behavior when restarting '
                       'from checkpoints.')
 
-    if args.gpu is not None:
-        warnings.warn('You have chosen a specific GPU. This will completely '
-                      'disable data parallelism.')
-
     if args.dist_url == "env://" and args.world_size == -1:
         args.world_size = int(os.environ["WORLD_SIZE"])
 
     #explicit rules
     args.distributed = True
     ngpus_per_node = torch.cuda.device_count()
-    main_worker(int(args.gpu), ngpus_per_node, args)
+    main_worker(ngpus_per_node, args)
 
-def main_worker(gpu, ngpus_per_node, args):
+def main_worker(ngpus_per_node, args):
 
     writer = SummaryWriter('runs/' + args.name, max_queue=10, flush_secs=60)
 
@@ -153,11 +149,7 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
             args.rank = int(os.environ["RANK"])
-        if args.multiprocessing_distributed:
-            # For multiprocessing distributed training, rank needs to be the
-            # global rank among all the processes
-            args.rank = args.rank * ngpus_per_node + gpu
-        print(torch.cuda.device_count())
+        print("num devices ", torch.cuda.device_count())
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
 
@@ -177,7 +169,7 @@ def main_worker(gpu, ngpus_per_node, args):
         model = torch.nn.parallel.DistributedDataParallel(model)
     
     # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss().cuda(gpu)
+    criterion = nn.CrossEntropyLoss().cuda()
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
@@ -230,14 +222,16 @@ def main_worker(gpu, ngpus_per_node, args):
     valtransformations = augmentation
     val_dataset = dataLoader(valDir, valtransformations)
     train_sampler = None
+    val_sampler = None
     if args.distributed and ngpus_per_node > 1:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+        val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
     val_loader = torch.utils.data.DataLoader(
         val_dataset, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
+        num_workers=args.workers, pin_memory=True, sampler=val_sampler, drop_last=True)
 
     #train and validation for x epochs
     for epoch in range(args.start_epoch, args.epochs+1):
@@ -260,7 +254,6 @@ def main_worker(gpu, ngpus_per_node, args):
     #wrap up
     writer.export_scalars_to_json("./" + args.name + "_scalars.json")
     dist.destroy_process_group()
-    print(f"{rank} destroy complete")
     writer.close()
 
 '''
