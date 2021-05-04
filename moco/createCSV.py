@@ -33,7 +33,8 @@ def main():
 
     listOfTrainImagePaths = []
     listofValImagePaths = []
-    listofTestImagePaths = []
+    listofTestRealImagePaths = []
+    listofTestFakeImagePaths = []
     # iterate through the names of contents of the folder
     contentsOfFolder = sorted(Path(path).iterdir(), key=os.path.getmtime)
     #create train set 42,000 images (4 crops per image)
@@ -50,18 +51,19 @@ def main():
     for image_path in range(int(len(contentsOfFolder)*0.6)+40000, len(contentsOfFolder)):
         # create the full input path and read the file
         input_path = os.path.join(path, contentsOfFolder[image_path])
-        listofTestImagePaths.append(input_path)
+        listofTestRealImagePaths.append(input_path)
     contentsOfFakeFolder = sorted(Path(args.pathF).iterdir(), key=os.path.getmtime)
     for image_path in range(0, 70000):
         # create the full input path and read the file
         input_path = os.path.join(args.pathF, contentsOfFakeFolder[image_path])
-        listofTestImagePaths.append(input_path)
+        listofTestFakeImagePaths.append(input_path)
     
     #create test set 
     #load into hashmap for quick access
     hashTrainImages = set(listOfTrainImagePaths)
     hashValImages = set(listofValImagePaths)
-    hashTestImages = set(listofTestImagePaths)
+    hashTestRealImages = set(listofTestRealImagePaths)
+    hashTestFakeImages = set(listofTestFakeImagePaths)
 
     #write to CSV for train file
     with open(gpuTrain, 'w', newline='') as file:
@@ -93,13 +95,19 @@ def main():
     with open(gpuTest, 'w', newline='') as file:
         writer = csv.writer(file)
         #only store postive samples
-        writer.writerow(["image1", "image2"])
-        for image1 in listofTestImagePaths:
-            #image pairings between left and right eye
+        writer.writerow(["image1", "image2", "label"])
+        for image1 in listofTestRealImagePaths:
+            #image pairings between left and right eye (real images have label of 1)
             if(image1.find("leftEye") != -1):
                 image2 = image1.replace("leftEye","rightEye")
-                if(image2 in hashTestImages):
-                    writer.writerow([image1,image2])
+                if(image2 in hashTestRealImages):
+                    writer.writerow([image1,image2, 1])
+        for image1 in listofTestFakeImagePaths:
+            #image pairings between left and right eye (fake images have label of 0)
+            if(image1.find("leftEye") != -1):
+                image2 = image1.replace("leftEye","rightEye")
+                if(image2 in hashTestFakeImages):
+                    writer.writerow([image1,image2, 0])
 
 
 if __name__ == '__main__':

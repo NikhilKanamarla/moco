@@ -86,6 +86,8 @@ parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training')
 parser.add_argument('--gpu', default=None, type=str,
                     help='GPU id to use.')
+parser.add_argument('--save_path', default='/datad/nkanama/checkpoints', type=str,
+                    help='where to save checkpoints')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
                          'N processes per node, which has N GPUs. This is the '
@@ -113,8 +115,6 @@ parser.add_argument('--pretrained', action='store_true', default=False,
                     help='use pretrained backbone on imagenet')
 parser.add_argument('--name', type=str, required=True, default=False,
                     help='name of model and tensorboard log')
-parser.add_argument('--output', type=str, required=True, default=False,
-                    help='location to output images')
 
 def main():
     args = parser.parse_args()
@@ -170,60 +170,34 @@ def main_worker(gpu, ngpus_per_node, args):
     print(model)
  
     if args.distributed:
-        # For multiprocessing distributed, DistributedDataParallel constructor
-        # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
-        if gpu is not None:
-            #pdb.set_trace()
-            torch.cuda.set_device(int(gpu))
-            model.cuda(int(gpu))
-            # When using a single GPU per process and per
-            # DistributedDataParallel, we need to divide the batch size
-            # ourselves based on the total number of GPUs we have
-            args.batch_size = int(args.batch_size / ngpus_per_node)
-            args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
-            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[int(gpu)])
-        else:
-            model.cuda()
-            # DistributedDataParallel will divide and allocate batch_size to all
-            # available GPUs if device_ids are not set
-            model = torch.nn.parallel.DistributedDataParallel(model)
-    else:
-        torch.cuda.set_device(gpu)
-        model.cuda(gpu)
+        model.cuda()
+        # DistributedDataParallel will divide and allocate batch_size to all
+        # available GPUs if device_ids are not set
+        model = torch.nn.parallel.DistributedDataParallel(model)
     
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(gpu)
-
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
     
-    #pdb.set_trace()
-    # optionally resume from a checkpoint
+    #optional resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
-            if gpu is None:
-                checkpoint = torch.load(args.resume)
-            else:
-                # Map model to be loaded to specified single gpu.
-                loc = 'cuda:{}'.format(gpu)
-                checkpoint = torch.load(args.resume, map_location=loc)
-            args.start_epoch = checkpoint['epoch']
+            checkpoint = torch.load(args.resume)
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
-
     cudnn.benchmark = True
 
     # Data loading code
     traindir  = args.dataTrain
     valDir = args.dataVal
-
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
     if args.aug_plus:
@@ -249,21 +223,15 @@ def main_worker(gpu, ngpus_per_node, args):
             transforms.ToTensor(),
             normalize
         ]
-
     if args.aug_plus == False:
         augmentation = transforms.Compose([transforms.Resize((256,256)), transforms.ToTensor()])
-
     traintransformations = augmentation
     train_dataset = dataLoader(traindir, traintransformations)
     valtransformations = augmentation
     val_dataset = dataLoader(valDir, valtransformations)
-
     train_sampler = None
     if args.distributed and ngpus_per_node > 1:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-    else:
-        train_sampler = None
-
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
@@ -271,14 +239,12 @@ def main_worker(gpu, ngpus_per_node, args):
         val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
 
+    #train and validation for x epochs
     for epoch in range(args.start_epoch, args.epochs+1):
-        '''
-        if args.distributed:
-            #train_sampler.set_epoch(epoch)
-        '''
+        if args.distributed and ngpus_per_node > 1:
+            train_sampler.set_epoch(epoch)
         adjust_learning_rate(optimizer, epoch, args)
 
-        # train for x epochs
         train(train_loader, model, criterion, optimizer, epoch, args, writer)
         validation(val_loader, model, criterion, optimizer, epoch, args, writer)
 
@@ -289,7 +255,9 @@ def main_worker(gpu, ngpus_per_node, args):
                 'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
-            }, is_best=False, filename=str(args.name+'checkpoint_{:04d}.pth.tar'.format(epoch)))
+            }, is_best=False, filename=str(os.path.join(args.save_path,args.name+'checkpoint_{:04d}.pth.tar'.format(epoch))))
+    
+    #wrap up
     writer.export_scalars_to_json("./" + args.name + "_scalars.json")
     dist.destroy_process_group()
     print(f"{rank} destroy complete")
@@ -320,8 +288,8 @@ def validation(val_loader, model, criterion, optimizer, epoch, args, writer):
             data_time.update(time.time() - end)
             
             if args.gpu is not None:
-                image1 = image1.cuda(int(args.gpu), non_blocking=True)
-                image2 = image2.cuda(int(args.gpu), non_blocking=True)
+                image1 = image1.cuda(non_blocking=True)
+                image2 = image2.cuda(non_blocking=True)
 
             # compute output
             output, target, q, k = model(im_q=image1, im_k=image2)
@@ -330,7 +298,6 @@ def validation(val_loader, model, criterion, optimizer, epoch, args, writer):
 
             # acc1/acc5 are (K+1)-way contrast classifier accuracy
             # measure accuracy and record loss
-            #pdb.set_trace()
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
             losses.update(loss.item(), image1.size(0))
             top1.update(acc1[0], image1.size(0))
@@ -370,8 +337,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer):
         data_time.update(time.time() - end)
         
         if args.gpu is not None:
-            image1 = image1.cuda(int(args.gpu), non_blocking=True)
-            image2 = image2.cuda(int(args.gpu), non_blocking=True)
+            image1 = image1.cuda(non_blocking=True)
+            image2 = image2.cuda(non_blocking=True)
 
         # compute output
         output, target, q, k = model(im_q=image1, im_k=image2)

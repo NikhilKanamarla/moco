@@ -262,7 +262,7 @@ def test(test_loader, model, criterion, optimizer, epoch, args, writer):
     finalOutput = []
     finalTarget = []
     #configure model
-    pdb.set_trace()
+    #pdb.set_trace()
     model.eval()
     with torch.no_grad():
         for i, (image1, image2, labels) in enumerate(test_loader):
@@ -287,7 +287,6 @@ def test(test_loader, model, criterion, optimizer, epoch, args, writer):
             top5.update(acc5[0], image1.size(0))
 
             #output loss and accuracy top1 to tensorboard
-            #pdb.set_trace()
             writer.add_scalar("test loss", loss.item(), epoch * len(test_loader) + i)
             writer.add_scalar("test accuracy", acc1[0], epoch * len(test_loader) + i)
             output_text = " epoch " + str(epoch) + " batch " + str(i) + " accuracy " + str(acc1[0]) + " loss " + str(loss.item())
@@ -301,10 +300,10 @@ def test(test_loader, model, criterion, optimizer, epoch, args, writer):
                 progress.display(i)
     
     #compute AP
-    pdb.set_trace()
+    #pdb.set_trace()
     finalTarget = (np.array(finalTarget)).flatten()
     finalOutput = (np.array(finalOutput)).flatten()
-    AP = average_precision_score(y_true=finalTarget, y_score=finalOutput, pos_label=0)
+    AP = average_precision_score(y_true=finalTarget, y_score=finalOutput, pos_label=1)
     print("average precison is", AP)
 
 
@@ -377,7 +376,7 @@ def computeDotProduct(a, b, labels, finalOutput, finalTarget):
     # We fist normalize the rows, before computing their dot products
     a_norm = a / a.norm(dim=1)[:, None]
     b_norm = b / b.norm(dim=1)[:, None]
-    res = torch.einsum('ik,kj->ij', [a, b])
+    res = torch.einsum('ij,ij->', [a, b])
     # labels: positive key indicators
     labels = labels.cuda()
     finalTarget.append(labels.tolist())
